@@ -5,7 +5,7 @@
 #include <glad.h>
 #include <glm/gtc/matrix_transform.hpp>
 
-#include <shader.h>
+#include <shader/shader.h>
 #include <glm/gtc/type_ptr.inl>
 
 Shader::Shader(const char* vertexPath, const char* fragmentPath) {

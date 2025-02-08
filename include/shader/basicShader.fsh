@@ -1,20 +1,12 @@
 #version 460 core
 
-in vec3 normal;
-in vec3 fragPos;
 in vec2 texCoords;
-in mat4 viewMatrix;
 
 out vec4 FragColor;
 
-struct Material {
-    vec3 ambient;
-    sampler2D diffuse;
-    sampler2D specular;
-    float shininess;
-};
-uniform Material material;
+uniform sampler2D textureSampler;
 
+/*
 struct PointLight {
     vec3 ambient;
     vec3 diffuse;
@@ -95,17 +87,9 @@ vec3 calculateSpotLight(SpotLight light){
     float intensity = clamp((theta-light.outerCutOff)/epsilon, 0.0f, 1.0f);
     return intensity*vec3(texture(material.diffuse, texCoords));
 }
+*/
 
 void main()
 {
-    vec3 result = vec3(0.0f);
-
-    for(int i = 0; i < NR_POINT_LIGHTS; i++){
-        result += calculatePointLight(pointLights[i]);
-    }
-
-    result += calculateSpotLight(spotlight);
-    result += calculateDirLight(dirLight);
-    FragColor = vec4(result, 1.0);
-
+    FragColor = texture(textureSampler, texCoords);
 }
