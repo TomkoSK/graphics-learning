@@ -91,5 +91,8 @@ vec3 calculateSpotLight(SpotLight light){
 
 void main()
 {
-    FragColor = texture(textureSampler, texCoords);
+    vec4 texColor = texture(textureSampler, texCoords);
+    if(texColor.a == 0.0f)
+            discard;
+    FragColor = texColor;
 }

@@ -12,10 +12,9 @@
 #include <glm/gtx/io.hpp>
 #include <camera.h>
 #include <model/model.h>
+#include <map>
 
 float lastX = 0.0f, lastY = 0.0f;
-glm::vec3 lightPos(1.2f, 3.0f, 2.0f);
-
 Camera camera = Camera();
 
 void framebufferSizeCallback(GLFWwindow* window, int width, int height)
@@ -49,7 +48,7 @@ void processInput(GLFWwindow *window, float deltaTime)
     }
 }
 
-unsigned int textureFromFile(const char *path) {
+unsigned int textureFromFile(const char *path, bool rgba = false) {
     int x, y, nrChannels;
     unsigned char *data = stbi_load(path, &x, &y, &nrChannels, 0);
     if (!data) {
@@ -59,15 +58,21 @@ unsigned int textureFromFile(const char *path) {
     glActiveTexture(GL_TEXTURE31);
     glGenTextures(1, &texture);
     glBindTexture(GL_TEXTURE_2D, texture);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
+    int format;
+    if (rgba)
+        format = GL_RGBA;
+    else
+        format = GL_RGB;
+
     if (nrChannels == 3)
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, x, y, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+        glTexImage2D(GL_TEXTURE_2D, 0, format, x, y, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
     else if (nrChannels== 4)
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, x, y, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+        glTexImage2D(GL_TEXTURE_2D, 0, format, x, y, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
     else
         std::cout << "BAD CHANNEL COUNT WHILE LOADING TEXTURE: " << path << " CHANNELS: " << nrChannels << std::endl;
     glGenerateMipmap(GL_TEXTURE_2D);
@@ -76,12 +81,36 @@ unsigned int textureFromFile(const char *path) {
     return texture;
 }
 
-void drawCube(glm::mat4 &model, glm::mat4 &view, glm::mat4 &projection, Shader &shader) {
-    shader.use();
+void drawQuad(glm::mat4 &model, glm::mat4 &view, glm::mat4 &projection, Shader &shader) {
     shader.setMat4("model", model);
     shader.setMat4("view", view);
     shader.setMat4("projection", projection);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+}
+
+void drawCubeOutline(glm::mat4 model, Shader &shader, glm::vec3 outlineColor, float outlineWidth) {
+    glEnable(GL_STENCIL_TEST);
+    glDepthMask(GL_FALSE);
+    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+    glStencilMask(0xFF);
+    glStencilOp(GL_KEEP, GL_REPLACE, GL_REPLACE);
+    glStencilFunc(GL_ALWAYS, 1, 0xFF);
+    shader.use();
+    shader.setMat4("model", model);
     glDrawArrays(GL_TRIANGLES, 0, 36);
+
+    glDepthMask(GL_TRUE);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glStencilMask(0x00);
+    glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
+    model = glm::scale(model, glm::vec3(1.0f+outlineWidth));
+    shader.setMat4("model", model);
+    shader.setVec3("color", outlineColor);
+    glDrawArrays(GL_TRIANGLES, 0, 36);
+
+    glStencilMask(0xFF);
+    glDisable(GL_STENCIL_TEST);
+
 }
 
 int main() {
@@ -105,170 +134,116 @@ int main() {
 
     glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
 
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-
-    Shader shaderProgram("./include/shader/basicShader.vsh", "./include/shader/basicShader.fsh");
-    Shader singleShader("./include/shader/basicShader.vsh","./include/shader/singleColor.fsh");
-
     glm::mat4 projection;
     projection = glm::perspective(glm::radians(45.0f), 800.0f / 600.0f, 0.1f, 100.0f);
 
-    glEnable(GL_DEPTH_TEST);
+    Shader shaderProgram("./include/shader/basicShader.vsh", "./include/shader/basicShader.fsh");
+    Shader singleShader("./include/shader/basicShader.vsh","./include/shader/singleColor.fsh");
+    Shader cubemapShader("./include/shader/cubeShader.vsh", "./include/shader/cubeShader.fsh");
+    Shader mirrorShader("./include/shader/basicShader.vsh", "./include/shader/mirrorShader.fsh");
 
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     glfwSetCursorPosCallback(window, mouseCallback);
 
     float cubeVertices[] = {
-    // Back face
-    -0.5f, -0.5f, -0.5f,  0.0f, 0.0f, // Bottom-left
-     0.5f, -0.5f, -0.5f,  1.0f, 0.0f, // bottom-right
-     0.5f,  0.5f, -0.5f,  1.0f, 1.0f, // top-right
-     0.5f,  0.5f, -0.5f,  1.0f, 1.0f, // top-right
-    -0.5f,  0.5f, -0.5f,  0.0f, 1.0f, // top-left
-    -0.5f, -0.5f, -0.5f,  0.0f, 0.0f, // bottom-left
-    // Front face
-    -0.5f, -0.5f,  0.5f,  0.0f, 0.0f, // bottom-left
-     0.5f,  0.5f,  0.5f,  1.0f, 1.0f, // top-right
-     0.5f, -0.5f,  0.5f,  1.0f, 0.0f, // bottom-right
-     0.5f,  0.5f,  0.5f,  1.0f, 1.0f, // top-right
-    -0.5f, -0.5f,  0.5f,  0.0f, 0.0f, // bottom-left
-    -0.5f,  0.5f,  0.5f,  0.0f, 1.0f, // top-left
-    // Left face
-    -0.5f,  0.5f,  0.5f,  1.0f, 0.0f, // top-right
-    -0.5f, -0.5f, -0.5f,  0.0f, 1.0f, // bottom-left
-    -0.5f,  0.5f, -0.5f,  1.0f, 1.0f, // top-left
-    -0.5f, -0.5f, -0.5f,  0.0f, 1.0f, // bottom-left
-    -0.5f,  0.5f,  0.5f,  1.0f, 0.0f, // top-right
-    -0.5f, -0.5f,  0.5f,  0.0f, 0.0f, // bottom-right
-    // Right face
-     0.5f,  0.5f,  0.5f,  1.0f, 0.0f, // top-left
-     0.5f,  0.5f, -0.5f,  1.0f, 1.0f, // top-right
-     0.5f, -0.5f, -0.5f,  0.0f, 1.0f, // bottom-right
-     0.5f, -0.5f, -0.5f,  0.0f, 1.0f, // bottom-right
-     0.5f, -0.5f,  0.5f,  0.0f, 0.0f, // bottom-left
-     0.5f,  0.5f,  0.5f,  1.0f, 0.0f, // top-left
-    // Bottom face
-    -0.5f, -0.5f, -0.5f,  0.0f, 1.0f, // top-right
-     0.5f, -0.5f,  0.5f,  1.0f, 0.0f, // bottom-left
-     0.5f, -0.5f, -0.5f,  1.0f, 1.0f, // top-left
-     0.5f, -0.5f,  0.5f,  1.0f, 0.0f, // bottom-left
-    -0.5f, -0.5f, -0.5f,  0.0f, 1.0f, // top-right
-    -0.5f, -0.5f,  0.5f,  0.0f, 0.0f, // bottom-right
-    // Top face
-    -0.5f,  0.5f, -0.5f,  0.0f, 1.0f, // top-left
-     0.5f,  0.5f, -0.5f,  1.0f, 1.0f, // top-right
-     0.5f,  0.5f,  0.5f,  1.0f, 0.0f, // bottom-right
-     0.5f,  0.5f,  0.5f,  1.0f, 0.0f, // bottom-right
-    -0.5f,  0.5f,  0.5f,  0.0f, 0.0f, // bottom-left
-    -0.5f,  0.5f, -0.5f,  0.0f, 1.0f  // top-left
-};
+        // Back face
+        -0.5f, -0.5f, -0.5f,  0.0f, 0.0f, 0.0f, 0.0f, -1.0f, // Bottom-left
+         0.5f, -0.5f, -0.5f,  1.0f, 0.0f, 0.0f, 0.0f, -1.0f, // bottom-right
+         0.5f,  0.5f, -0.5f,  1.0f, 1.0f, 0.0f, 0.0f, -1.0f, // top-right
+         0.5f,  0.5f, -0.5f,  1.0f, 1.0f, 0.0f, 0.0f, -1.0f, // top-right
+        -0.5f,  0.5f, -0.5f,  0.0f, 1.0f, 0.0f, 0.0f, -1.0f, // top-left
+        -0.5f, -0.5f, -0.5f,  0.0f, 0.0f, 0.0f, 0.0f, -1.0f, // bottom-left
+        // Front face
+        -0.5f, -0.5f,  0.5f,  0.0f, 0.0f, 0.0f, 0.0f, 1.0f, // bottom-left
+         0.5f,  0.5f,  0.5f,  1.0f, 1.0f, 0.0f, 0.0f, 1.0f, // top-right
+         0.5f, -0.5f,  0.5f,  1.0f, 0.0f, 0.0f, 0.0f, 1.0f, // bottom-right
+         0.5f,  0.5f,  0.5f,  1.0f, 1.0f, 0.0f, 0.0f, 1.0f, // top-right
+        -0.5f, -0.5f,  0.5f,  0.0f, 0.0f, 0.0f, 0.0f, 1.0f, // bottom-left
+        -0.5f,  0.5f,  0.5f,  0.0f, 1.0f, 0.0f, 0.0f, 1.0f, // top-left
+        // Left face
+        -0.5f,  0.5f,  0.5f,  1.0f, 0.0f, -1.0f, 0.0f, 0.0f, // top-right
+        -0.5f, -0.5f, -0.5f,  0.0f, 1.0f, -1.0f, 0.0f, 0.0f, // bottom-left
+        -0.5f,  0.5f, -0.5f,  1.0f, 1.0f, -1.0f, 0.0f, 0.0f, // top-left
+        -0.5f, -0.5f, -0.5f,  0.0f, 1.0f, -1.0f, 0.0f, 0.0f, // bottom-left
+        -0.5f,  0.5f,  0.5f,  1.0f, 0.0f, -1.0f, 0.0f, 0.0f, // top-right
+        -0.5f, -0.5f,  0.5f,  0.0f, 0.0f, -1.0f, 0.0f, 0.0f, // bottom-right
+        // Right face
+         0.5f,  0.5f,  0.5f,  1.0f, 0.0f, 1.0f, 0.0f, 0.0f, // top-left
+         0.5f,  0.5f, -0.5f,  1.0f, 1.0f, 1.0f, 0.0f, 0.0f, // top-right
+         0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 1.0f, 0.0f, 0.0f, // bottom-right
+         0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 1.0f, 0.0f, 0.0f, // bottom-right
+         0.5f, -0.5f,  0.5f,  0.0f, 0.0f, 1.0f, 0.0f, 0.0f, // bottom-left
+         0.5f,  0.5f,  0.5f,  1.0f, 0.0f, 1.0f, 0.0f, 0.0f, // top-left
+        // Bottom face
+        -0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 0.0f, -1.0f, 0.0f, // top-right
+         0.5f, -0.5f,  0.5f,  1.0f, 0.0f, 0.0f, -1.0f, 0.0f, // bottom-left
+         0.5f, -0.5f, -0.5f,  1.0f, 1.0f, 0.0f, -1.0f, 0.0f, // top-left
+         0.5f, -0.5f,  0.5f,  1.0f, 0.0f, 0.0f, -1.0f, 0.0f, // bottom-left
+        -0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 0.0f, -1.0f, 0.0f, // top-right
+        -0.5f, -0.5f,  0.5f,  0.0f, 0.0f, 0.0f, -1.0f, 0.0f, // bottom-right
+        // Top face
+        -0.5f,  0.5f, -0.5f,  0.0f, 1.0f, 0.0f, 1.0f, 0.0f,  // top-left
+         0.5f,  0.5f, -0.5f,  1.0f, 1.0f, 0.0f, 1.0f, 0.0f,  // top-right
+         0.5f,  0.5f,  0.5f,  1.0f, 0.0f, 0.0f, 1.0f, 0.0f,  // bottom-right
+         0.5f,  0.5f,  0.5f,  1.0f, 0.0f, 0.0f, 1.0f, 0.0f,  // bottom-right
+        -0.5f,  0.5f,  0.5f,  0.0f, 0.0f, 0.0f, 1.0f, 0.0f,  // bottom-left
+        -0.5f,  0.5f, -0.5f,  0.0f, 1.0f, 0.0f, 1.0f, 0.0f   // top-left
+    };
 
-
-    unsigned int VAO, VBO;
-    glGenVertexArrays(1, &VAO);
-    glBindVertexArray(VAO);
-    glGenBuffers(1, &VBO);
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    //CUBE VAO CREATION
+    unsigned int cubeVAO, cubeVBO;
+    glGenVertexArrays(1, &cubeVAO);
+    glBindVertexArray(cubeVAO);
+    glGenBuffers(1, &cubeVBO);
+    glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof(cubeVertices), cubeVertices, GL_STATIC_DRAW);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5*sizeof(float), static_cast<void *>(0));
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8*sizeof(float), static_cast<void *>(0));
     glEnableVertexAttribArray(0);
-    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 5*sizeof(float), reinterpret_cast<void *>(3 * sizeof(float)));
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8*sizeof(float), reinterpret_cast<void *>(3 * sizeof(float)));
     glEnableVertexAttribArray(2);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8*sizeof(float), reinterpret_cast<void *>(5 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+    //0 is pos, 1 is normal, 2 is texture coords
+    glBindVertexArray(0);
 
-    unsigned int texture = textureFromFile("container.jpg");
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture);
+    unsigned int uniformBuffer;
+    glGenBuffers(1, &uniformBuffer);
+    glBindBuffer(GL_UNIFORM_BUFFER, uniformBuffer);
+    glBufferData(GL_UNIFORM_BUFFER, 2*sizeof(glm::mat4), nullptr, GL_STATIC_DRAW);
+    glBindBufferBase(GL_UNIFORM_BUFFER, 0, uniformBuffer);
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
-    unsigned int textureMetal = textureFromFile("metal.png");
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_2D, textureMetal);
-
-    unsigned int textureMeow = textureFromFile("meow.png");
-    glActiveTexture(GL_TEXTURE2);
-    glBindTexture(GL_TEXTURE_2D, textureMeow);
-
-    glEnable(GL_DEPTH_TEST);
-    glEnable(GL_STENCIL_TEST);
     float deltaTime = 0.0f, lastFrame = 0.0f;
 
-    glEnable(GL_CULL_FACE);
-    glCullFace(GL_BACK);
-    glFrontFace(GL_CW);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glEnable(GL_DEPTH_TEST);
+
     while(!glfwWindowShouldClose(window)) {
+
         deltaTime = glfwGetTime() - lastFrame;
         lastFrame = glfwGetTime();
         processInput(window, deltaTime);
 
-        glStencilMask(0xFF);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-        glDepthFunc(GL_LESS);
-        glStencilMask(0x00);
-        glStencilFunc(GL_ALWAYS, 1, 0xFF);
 
-        glm::mat4 view;
-        view = camera.GetViewMatrix();
+        glm::mat4 view = camera.GetViewMatrix();
+        glBindBuffer(GL_UNIFORM_BUFFER, uniformBuffer);
+        glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), glm::value_ptr(projection));
+        glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), sizeof(glm::mat4), glm::value_ptr(view));
 
+
+        glBindVertexArray(cubeVAO);
         glm::mat4 model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(0.0f, -1.06f, 0.0f));
-        model = glm::scale(model, glm::vec3(12.0f, 0.05f, 12.0f));
-
-        shaderProgram.use();
-        shaderProgram.setInt("textureSampler", 1);
-        drawCube(model, view, projection, shaderProgram);
-
-        //FIRST CUBE DRAWN
-
-        glDepthFunc(GL_LESS);
-        glStencilMask(0x00);
-        glStencilFunc(GL_ALWAYS, 1, 0xFF);
-
-        model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(5.0f, 0.0f, 0.0f));
-        model = glm::scale(model, glm::vec3(0.95f));
-        shaderProgram.setInt("textureSampler", 0);
-        drawCube(model, view, projection, shaderProgram);
-
-        //REAL STUFF
-
-        glDepthFunc(GL_LESS);
-        glStencilMask(0xF0);
-        glStencilOp(GL_KEEP, GL_REPLACE, GL_KEEP);
-        glStencilFunc(GL_ALWAYS, 128, 0xF0);
-
-        model = glm::mat4(1.0f);
-        shaderProgram.setInt("textureSampler", 0);
-        drawCube(model, view, projection, shaderProgram);
-
-        glDepthFunc(GL_LESS);
-        glStencilMask(0xF);
-        glStencilOp(GL_KEEP, GL_REPLACE, GL_KEEP);
-        glStencilFunc(GL_ALWAYS, 1, 0xF);
-
-        model = glm::mat4(1.0f);
-        model = glm::translate(model, glm::vec3(5.0f, 0.0f, 0.0f));
-        shaderProgram.setInt("textureSampler", 0);
-        drawCube(model, view, projection, shaderProgram);
-
-        glDepthFunc(GL_ALWAYS);
-        glStencilMask(0x00);
-        glStencilFunc(GL_EQUAL, 1, 0xF);
         singleShader.use();
-        singleShader.setInt("textureSampler", 2);
-        drawCube(model, view, projection, singleShader);
+        singleShader.setVec3("color", glm::vec3(1.0f, 0.0f, 0.0f));
+        singleShader.setMat4("model", model);
+        glDrawArrays(GL_TRIANGLES, 0, 36);
 
-        model = glm::mat4(1.0f);
-        glDepthFunc(GL_ALWAYS);
-        glStencilMask(0x00);
-        glStencilFunc(GL_EQUAL, 128, 0xF0);
-        singleShader.use();
-        singleShader.setInt("textureSampler", 2);
-        drawCube(model, view, projection, singleShader);
-
+        drawCubeOutline(model, singleShader, glm::vec3(1.0f), 0.05f);
 
         glfwSwapBuffers(window);
         glfwPollEvents();
     }
-
     glfwTerminate();
     return 0;
 }
