@@ -7,7 +7,9 @@ include_directories(glad/include/glad glad/include/KHR include)
 set(CMAKE_CXX_STANDARD 20)
 set(SOURCE_FILES main.cpp glad/include/glad/glad.c include/shader/shader.cpp
         include/model/model.cpp
-        include/model/model.h)
+        include/model/model.h
+        include/physics/rigid_cube.h
+        include/physics/rigid_cube.cpp)
 
 find_package(assimp REQUIRED)
 

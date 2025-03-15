@@ -14,8 +14,14 @@
 #include <model/model.h>
 #include <map>
 
+#include "physics/rigid_cube.h"
+
 float lastX = 0.0f, lastY = 0.0f;
 Camera camera = Camera();
+Cube firstCube = Cube(glm::vec3(0.0f));
+Cube secondCube = Cube(glm::vec3(0.0f, 0.0f, -2.0f));
+int movementIndex = 0;
+float cubeSpeed = 2.0f;
 
 void framebufferSizeCallback(GLFWwindow* window, int width, int height)
 {
@@ -34,18 +40,66 @@ void processInput(GLFWwindow *window, float deltaTime)
 {
     if(glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
         glfwSetWindowShouldClose(window, true);
-    if(glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
-        camera.ProcessKeyboard(FORWARD, deltaTime);
+    if (movementIndex == 0) {
+        if(glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+            camera.ProcessKeyboard(FORWARD, deltaTime);
+        }
+        if(glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+            camera.ProcessKeyboard(BACKWARD, deltaTime);
+        }
+        if(glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+            camera.ProcessKeyboard(LEFT, deltaTime);
+        }
+        if(glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+            camera.ProcessKeyboard(RIGHT, deltaTime);
+        }
     }
-    if(glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
-        camera.ProcessKeyboard(BACKWARD, deltaTime);
+    else if (movementIndex == 1) {
+        if(glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+            firstCube.move(glm::vec3(0.0f, 0.0f, 1.0f)*deltaTime*cubeSpeed);
+        }
+        if(glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+            firstCube.move(glm::vec3(0.0f, 0.0f, -1.0f)*deltaTime*cubeSpeed);
+        }
+        if(glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+            firstCube.move(glm::vec3(1.0f, 0.0f, 0.0f)*deltaTime*cubeSpeed);
+        }
+        if(glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+            firstCube.move(glm::vec3(-1.0f, 0.0f, 0.0f)*deltaTime*cubeSpeed);
+        }
+        if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+            firstCube.move(glm::vec3(0.0f, 1.0f, 0.0f)*deltaTime*cubeSpeed);
+        }
+        if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
+            firstCube.move(glm::vec3(0.0f, -1.0f, 0.0f)*deltaTime*cubeSpeed);
+        }
     }
-    if(glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
-        camera.ProcessKeyboard(LEFT, deltaTime);
+    else if (movementIndex == 2) {
+        if(glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
+            secondCube.move(glm::vec3(0.0f, 0.0f, 1.0f)*deltaTime*cubeSpeed);
+        }
+        if(glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
+            secondCube.move(glm::vec3(0.0f, 0.0f, -1.0f)*deltaTime*cubeSpeed);
+        }
+        if(glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+            secondCube.move(glm::vec3(1.0f, 0.0f, 0.0f)*deltaTime*cubeSpeed);
+        }
+        if(glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+            secondCube.move(glm::vec3(-1.0f, 0.0f, 0.0f)*deltaTime*cubeSpeed);
+        }
+        if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) {
+            secondCube.move(glm::vec3(0.0f, 1.0f, 0.0f)*deltaTime*cubeSpeed);
+        }
+        if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS) {
+            secondCube.move(glm::vec3(0.0f, -1.0f, 0.0f)*deltaTime*cubeSpeed);
+        }
     }
-    if(glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
-        camera.ProcessKeyboard(RIGHT, deltaTime);
-    }
+}
+
+void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
+{
+    if (key == GLFW_KEY_E && action == GLFW_PRESS)
+        movementIndex = (movementIndex + 1) % 3;
 }
 
 unsigned int textureFromFile(const char *path, bool rgba = false) {
@@ -110,7 +164,74 @@ void drawCubeOutline(glm::mat4 model, Shader &shader, glm::vec3 outlineColor, fl
 
     glStencilMask(0xFF);
     glDisable(GL_STENCIL_TEST);
+}
 
+void drawCubeAxis(Cube &cube, Shader &shader, glm::vec3 axisColor) {
+    glm::mat4 model = glm::mat4(1.0f);
+    model = cube.model;
+    model = glm::scale(model, glm::vec3(0.05f, 8.0f, 0.05f));
+    shader.use();
+    shader.setMat4("model", model);
+    shader.setVec3("color", axisColor);
+    glDrawArrays(GL_TRIANGLES, 0, 36);
+}
+
+bool cubesOverlap(Cube &cube1, Cube &cube2, glm::vec3 &shortestAxis, float &shortestOverlap, short &aligned) {
+    //the aligned variable stores which element is further along the shortest overlap axis, useful for resolving collisions by moving elements
+    glm::vec3 axesToCheck[15];
+    axesToCheck[0] = firstCube.rotationMatrix*glm::vec3(1.0f, 0.0f, 0.0f);
+    axesToCheck[1] = firstCube.rotationMatrix*glm::vec3(0.0f, 1.0f, 0.0f);
+    axesToCheck[2] = firstCube.rotationMatrix*glm::vec3(0.0f, 0.0f, 1.0f);
+    axesToCheck[3] = secondCube.rotationMatrix*glm::vec3(1.0f, 0.0f, 0.0f);
+    axesToCheck[4] = secondCube.rotationMatrix*glm::vec3(0.0f, 1.0f, 0.0f);
+    axesToCheck[5] = secondCube.rotationMatrix*glm::vec3(0.0f, 0.0f, 1.0f);
+    short axisIndex = 6;
+    for (int i = 0; i < 3; i++) {
+        for (int j = 3; j < 6; j++) {
+            axesToCheck[axisIndex] = glm::normalize(glm::cross(axesToCheck[i], axesToCheck[j]));
+            axisIndex++;
+        }
+    }
+
+    for (glm::vec3 axis : axesToCheck) {
+        if (glm::isnan(axis.x))
+            continue;
+        float maxDot1 = -std::numeric_limits<float>::max(), maxDot2 = -std::numeric_limits<float>::max();
+        float minDot1 = std::numeric_limits<float>::max(), minDot2 = std::numeric_limits<float>::max();
+
+        for (glm::vec3 point : cube1.points) {
+            float dot = glm::dot(point, axis);
+            if (dot > maxDot1)
+                maxDot1 = dot;
+            if (dot < minDot1)
+                minDot1 = dot;
+        }
+        for (glm::vec3 point : cube2.points) {
+            float dot = glm::dot(point, axis);
+            if (dot > maxDot2)
+                maxDot2 = dot;
+            if (dot < minDot2)
+                minDot2 = dot;
+        }
+
+        if (maxDot1 < minDot2 || maxDot2 < minDot1) {
+            return false;
+        }
+        else {
+            float shorterOverlap = std::min(maxDot1-minDot2, maxDot2-minDot1);
+            if (shorterOverlap < shortestOverlap) {
+                if (maxDot1-minDot2 < maxDot2-minDot1) {
+                    aligned = 1;
+                }
+                else {
+                    aligned = 0;
+                }
+                shortestAxis = axis;
+                shortestOverlap = shorterOverlap;
+            }
+        }
+    }
+    return true;
 }
 
 int main() {
@@ -133,6 +254,7 @@ int main() {
     }
 
     glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
+    glfwSetKeyCallback(window, key_callback);
 
     glm::mat4 projection;
     projection = glm::perspective(glm::radians(45.0f), 800.0f / 600.0f, 0.1f, 100.0f);
@@ -231,15 +353,39 @@ int main() {
         glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), glm::value_ptr(projection));
         glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), sizeof(glm::mat4), glm::value_ptr(view));
 
+        firstCube.rotate(glm::quat(glm::angleAxis(glm::radians(35.0f)*deltaTime, glm::vec3(0.0f, 1.0f, 0.0f))));
 
         glBindVertexArray(cubeVAO);
-        glm::mat4 model = glm::mat4(1.0f);
         singleShader.use();
-        singleShader.setVec3("color", glm::vec3(1.0f, 0.0f, 0.0f));
-        singleShader.setMat4("model", model);
+        float overlap = std::numeric_limits<float>::max();
+        glm::vec3 overlapAxis;
+        short alignedIndex;
+        if (cubesOverlap(firstCube, secondCube, overlapAxis, overlap, alignedIndex)) {
+            singleShader.setVec3("color", glm::vec3(1.0f, 0.0f, 0.0f));
+            if (alignedIndex == 0)
+                firstCube.move(overlapAxis*overlap);
+            else
+                firstCube.move(-overlapAxis*overlap);
+            std::cout << overlapAxis << overlap << std::endl;
+            }
+        else
+            singleShader.setVec3("color", glm::vec3(0.0f, 1.0f, 0.0f));
+        singleShader.setMat4("model", firstCube.model);
         glDrawArrays(GL_TRIANGLES, 0, 36);
 
-        drawCubeOutline(model, singleShader, glm::vec3(1.0f), 0.05f);
+        singleShader.setMat4("model", secondCube.model);
+        glDrawArrays(GL_TRIANGLES, 0, 36);
+
+        if (movementIndex == 1)
+        {
+            drawCubeOutline(firstCube.model, singleShader, glm::vec3(1.0f), 0.05f);
+            drawCubeAxis(firstCube, singleShader, glm::vec3(1.0f, 1.0f, 0.0f));
+        }
+        if (movementIndex == 2)
+        {
+            drawCubeOutline(secondCube.model, singleShader, glm::vec3(1.0f), 0.05f);
+            drawCubeAxis(secondCube, singleShader, glm::vec3(1.0f, 1.0f, 0.0f));
+        }
 
         glfwSwapBuffers(window);
         glfwPollEvents();
