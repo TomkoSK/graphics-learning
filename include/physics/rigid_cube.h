@@ -16,9 +16,13 @@ public:
     glm::mat3 rotationMatrix;
     glm::vec3 velocity;
     void addImpulse(glm::vec3 direction);
+    void update(float deltaTime);
 private:
     void updateModel();
     void updatePoints();
+    glm::vec3 velocityUpdate;//if 2 objects collide and affect each other's velocity, the one that's affected first will then have an incorrect velocity for the
+    //other one to read, so the real velocity is only updated during the update function
+
 };
 
 #endif

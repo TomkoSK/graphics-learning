@@ -12,7 +12,7 @@ Cube::Cube(glm::vec3 position, glm::quat rotation) {
 
 void Cube::move(glm::vec3 offset) {
     this->position += offset;
-    updateModel();
+    this->model = glm::translate(this->model, offset);
     updatePoints();
 }
 
@@ -23,7 +23,7 @@ void Cube::setPos(glm::vec3 position) {
 }
 
 void Cube::addImpulse(glm::vec3 direction) {
-    this->velocity += direction;
+    this->velocityUpdate += direction;
 }
 
 
@@ -47,6 +47,14 @@ void Cube::updatePoints(){ //Returns 8 points of a cube
     points[5] = position+rotationMatrix*glm::vec3(0.5, 0.5, -0.5);
     points[6] = position+rotationMatrix*glm::vec3(0.5, -0.5, 0.5);
     points[7] = position+rotationMatrix*glm::vec3(0.5, -0.5, -0.5);
+}
+
+void Cube::update(float deltaTime) {
+    this->velocity += velocityUpdate;
+    this->velocityUpdate = glm::vec3(0.0f);
+    this->position += this->velocity*deltaTime;
+    updateModel();
+    updatePoints();
 }
 
 
