@@ -198,7 +198,7 @@ glm::vec2 lineIntersection(glm::vec2 point1, glm::vec2 point2, glm::vec2 point3,
     return glm::vec2(x, y);
 }
 
-bool cubesOverlap(Cube &cube1, Cube &cube2, glm::vec3* shortestAxis, float* shortestOverlap, int* fartherObject, CollisionType* colType, int* axisIndex) {
+bool cubesOverlap(Cube* cube1, Cube* cube2, glm::vec3* shortestAxis, Cube** fartherObject, float* overlapStart, float* overlapEnd) {
     //the aligned variable stores which element is further along the shortest overlap axis, useful for resolving collisions by moving elements
     float shortestOverlapLocal = std::numeric_limits<float>::max();
     glm::vec3 axesToCheck[15];
@@ -223,14 +223,14 @@ bool cubesOverlap(Cube &cube1, Cube &cube2, glm::vec3* shortestAxis, float* shor
         float maxDot1 = -std::numeric_limits<float>::max(), maxDot2 = -std::numeric_limits<float>::max();
         float minDot1 = std::numeric_limits<float>::max(), minDot2 = std::numeric_limits<float>::max();
 
-        for (glm::vec3 point : cube1.points) {
+        for (glm::vec3 point : cube1->points) {
             float dot = glm::dot(point, axesToCheck[i]);
             if (dot > maxDot1)
                 maxDot1 = dot;
             if (dot < minDot1)
                 minDot1 = dot;
         }
-        for (glm::vec3 point : cube2.points) {
+        for (glm::vec3 point : cube2->points) {
             float dot = glm::dot(point, axesToCheck[i]);
             if (dot > maxDot2)
                 maxDot2 = dot;
@@ -245,126 +245,62 @@ bool cubesOverlap(Cube &cube1, Cube &cube2, glm::vec3* shortestAxis, float* shor
         if (shorterOverlap < shortestOverlapLocal) {
             shortestOverlapLocal = shorterOverlap;
 
-            if (shortestOverlap != nullptr)
-                *shortestOverlap = shorterOverlap;
-
             if (shortestAxis != nullptr)
                 *shortestAxis = axesToCheck[i];
 
             if (fartherObject != nullptr) {
                 if (maxDot1 > maxDot2)
-                    *fartherObject = 0;
+                    *fartherObject = cube1;
                 else
-                    *fartherObject = 1;
+                    *fartherObject = cube2;
             }
 
-            if (colType != nullptr) {
-                if (i < 6)
-                    *colType = CollisionType::POINT;
+            if (overlapStart != nullptr) {
+                if (shorterOverlap == maxDot1-minDot2)
+                    *overlapStart = minDot2;
                 else
-                    *colType = CollisionType::EDGE;
+                    *overlapStart = minDot1;
             }
 
-            if (axisIndex != nullptr)
-                *axisIndex = i;
+            if (overlapEnd != nullptr) {
+                if (shorterOverlap == maxDot1-minDot2) {
+                    *overlapEnd = maxDot1;
+                }
+                else
+                    *overlapEnd = maxDot2;
+            }
         }
     }
     return true;
 }
 
-bool getIntersectionPoint(Cube& cube1, Cube& cube2, glm::vec3 collisionPoints[4], CollisionType* collisionType) {
+bool getIntersectionPoint(Cube* cube1, Cube* cube2, glm::vec3 (&collisionPoints)[8]) {
     glm::vec3 overlapAxis;
-    float overlap;
-    int fartherIndex;
-    CollisionType colType;
-    int axisIndex;
-    if (cubesOverlap(cube1, cube2, &overlapAxis, &overlap, &fartherIndex, &colType, &axisIndex)) {
-        *collisionType = colType;//REMOVE LATER!!!!!!!!!!!!!
-        if (fartherIndex == 0)//Second cube will be the one further along the collision axis, if it's the first one I switch the axis
-            overlapAxis = -overlapAxis;
-        //ALSO REMOVE!!!!!!!!!!!!!!
-        //cube1.move(-overlapAxis*overlap);
-        // cube2.move(overlapAxis*overlap*0.5f);
-        if (colType == CollisionType::POINT) {
-            if (axisIndex < 3) {//Second cube's point, first cube's face overlap
-                glm::vec3 deepestPoint;
-                float minDot = std::numeric_limits<float>::max();
-                for (glm::vec3 point : cube2.points) {
-                    float dot = glm::dot(point, overlapAxis);
-                    if (dot < minDot) {
-                        minDot = dot;
-                        deepestPoint = point;
-                    }
-                }
-                collisionPoints[0] = deepestPoint;
-                return true;
+    Cube* fartherCube;
+    float overlapStart;
+    float overlapEnd;
+    if (cubesOverlap(cube1, cube2, &overlapAxis, &fartherCube, &overlapStart, &overlapEnd)) {
+        if (fartherCube == cube1) {//If cube 1 is the one farther along the axis, I swap them (makes it easier)
+            Cube* temp = cube1;
+            cube1 = cube2;
+            cube2 = temp;
+        }
+        for (glm::vec3 &point : collisionPoints) {
+            point = glm::vec3(0.0f);
+        }
+
+        int firstCubePointCount = 0, secondCubePointCount = 0;
+        for (int i = 0; i < 8; i++) {
+            if (glm::dot(cube1->points[i], overlapAxis) > overlapStart) {
+                collisionPoints[firstCubePointCount] = cube1->points[i];
+                firstCubePointCount++;
             }
-            else {//First cube's point, second cube's face overlap
-                glm::vec3 deepestPoint;
-                float maxDot = -std::numeric_limits<float>::max();
-                for (glm::vec3 point : cube1.points) {
-                    float dot = glm::dot(point, overlapAxis);
-                    if (dot > maxDot) {
-                        maxDot = dot;
-                        deepestPoint = point;
-                    }
-                }
-                collisionPoints[0] = deepestPoint;
-                return true;
+            if (glm::dot(cube2->points[i], overlapAxis) < overlapEnd) {
+                collisionPoints[secondCubePointCount+4] = cube2->points[i];
+                secondCubePointCount++;
             }
         }
-        else {
-            float biggestDots[2] = {-std::numeric_limits<float>::max(), -std::numeric_limits<float>::max()};
-            glm::vec3 linePoints[4];
-            glm::vec3 deepestPoints[2];
-            for (glm::vec3 point : cube1.points) {
-                float dot = glm::dot(point, overlapAxis);
-                if (dot > biggestDots[1]) {
-                    biggestDots[0] = biggestDots[1];
-                    deepestPoints[0] = deepestPoints[1];
-                    biggestDots[1] = dot;
-                    deepestPoints[1] = point;
-                }
-                else if (dot > biggestDots[0]) {
-                    biggestDots[0] = dot;
-                    deepestPoints[0] = point;
-                }
-            }
-            linePoints[0] = deepestPoints[0];
-            linePoints[1] = deepestPoints[1];
-
-            float smallestDots[2] = {std::numeric_limits<float>::max(), std::numeric_limits<float>::max()};
-            for (glm::vec3 point : cube2.points) {
-                float dot = glm::dot(point, overlapAxis);
-                if (dot < smallestDots[1]) {
-                    smallestDots[0] = biggestDots[1];
-                    deepestPoints[0] = deepestPoints[1];
-                    smallestDots[1] = dot;
-                    deepestPoints[1] = point;
-                }
-                else if (dot < smallestDots[0]) {
-                    smallestDots[0] = dot;
-                    deepestPoints[0] = point;
-                }
-            }
-            linePoints[2] = deepestPoints[0];
-            linePoints[3] = deepestPoints[1];
-
-            glm::vec3 u = glm::normalize(glm::cross(overlapAxis, overlapAxis+linePoints[2]));//choose any point whatsoever it doesn't matter
-            glm::vec3 v = glm::normalize(glm::cross(overlapAxis, u));
-
-            glm::vec2 projectedPoints[4];
-            for (int i = 0; i < 4; i++) {//projects the lines onto the overlap axis plane
-                projectedPoints[i] = glm::vec2(glm::dot(linePoints[i], u), glm::dot(linePoints[i], v));
-            }
-            glm::vec2 projectedIntersection = lineIntersection(projectedPoints[0], projectedPoints[1], projectedPoints[2], projectedPoints[3]);
-            float intersectionRatio = glm::distance(projectedPoints[0], projectedIntersection)/glm::distance(projectedPoints[0], projectedPoints[1]);
-            glm::vec3 lineDir = linePoints[1] - linePoints[0];
-            std::cout << intersectionRatio << std::endl;
-            collisionPoints[0] = linePoints[0]+(-lineDir*intersectionRatio);
-
-            return true;
-        }
+        return true;
     }
     else {
         return false;
@@ -496,9 +432,8 @@ int main() {
 
         glBindVertexArray(cubeVAO);
         singleShader.use();
-        glm::vec3 collisionPoints[4] = {glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f)};
-        CollisionType colType;
-        if (getIntersectionPoint(firstCube, secondCube, collisionPoints, &colType)) {
+        glm::vec3 collisionPoints[8];
+        if (getIntersectionPoint(&firstCube, &secondCube, collisionPoints)) {
             singleShader.setVec3("color", glm::vec3(1.0f, 0.0f, 0.0f));
         }
         else
