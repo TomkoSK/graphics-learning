@@ -193,21 +193,41 @@ void drawCubeAxis(Cube &cube, Shader &shader, glm::vec3 axisColor) {
     glDrawArrays(GL_TRIANGLES, 0, 36);
 }
 
-std::vector<glm::vec2> getOverlapPolygon(std::vector<glm::vec2> subjectPolygon, std::vector<glm::vec2> clipPolygon) {
-    std::vector<glm::vec2> newSubjectPolygon;
-    std::vector<glm::vec2>::iterator it;
-    for (it = std::begin(clipPolygon); it != std::end(clipPolygon); ++it) {
-        glm::vec2 point2 = *it;
-        glm::vec2 point1 = it == std::begin(clipPolygon) ? clipPolygon.back() : *std::prev(it);//gets the previous element unless
-        //it's the first one, then it gets the last one
-
-    }
+float vec2Cross(glm::vec2 a, glm::vec2 b) {
+    return a.x * b.y - a.y * b.x;
 }
+
 
 glm::vec2 lineIntersection(glm::vec2 point1, glm::vec2 point2, glm::vec2 point3, glm::vec2 point4) {
     float x = (point1.x*point2.y-point1.y*point2.x)*(point3.x-point4.x)-(point1.x-point2.x)*(point3.x*point4.y-point3.y*point4.x)  / (point1.x-point2.x)*(point3.y-point4.y)-(point1.y-point2.y)*(point3.x-point4.x);
     float y = (point1.x*point2.y-point1.y*point2.x)*(point3.y-point4.y)-(point1.y-point2.y)*(point3.x*point4.y-point3.y*point4.x)  / (point1.x-point2.x)*(point3.y-point4.y)-(point1.y-point2.y)*(point3.x-point4.x);
     return glm::vec2(x, y);
+}
+
+std::vector<glm::vec2> getOverlapPolygon(std::vector<glm::vec2> subjectPolygon, std::vector<glm::vec2> clipPolygon) {
+    std::vector<glm::vec2> newSubjectPolygon;
+    std::vector<glm::vec2>::iterator clipIter, subjectIter;
+    for (clipIter = std::begin(clipPolygon); clipIter != std::end(clipPolygon); ++clipIter) {
+        glm::vec2 clipPoint2 = *clipIter;
+        glm::vec2 clipPoint1 = clipIter == std::begin(clipPolygon) ? clipPolygon.back() : *std::prev(clipIter);//gets the previous element unless
+        //it's the first one, then it gets the last one
+        for (subjectIter =  std::begin(subjectPolygon); subjectIter != std::end(subjectPolygon); ++subjectIter) {
+            glm::vec2 subjectPoint2 = *subjectIter;
+            glm::vec2 subjectPoint1 = subjectIter == std::begin(subjectPolygon) ? subjectPolygon.back() : *std::prev(subjectIter);
+            bool currentPointInside = vec2Cross(clipPoint2-clipPoint1, subjectPoint2-clipPoint1) > 0.0f;
+            bool previousPointInside = vec2Cross(clipPoint2-clipPoint1, subjectPoint1-clipPoint1) > 0.0f;
+            if (currentPointInside) {
+                if (!previousPointInside)
+                    newSubjectPolygon.push_back(lineIntersection(clipPoint1, clipPoint2, subjectPoint1, subjectPoint2));
+                newSubjectPolygon.push_back(subjectPoint2);
+            }
+            else if (previousPointInside)
+                newSubjectPolygon.push_back(lineIntersection(clipPoint1, clipPoint2, subjectPoint1, subjectPoint2));
+        }
+        subjectPolygon = newSubjectPolygon;//optimize later
+        newSubjectPolygon.clear();
+    }
+    return subjectPolygon;
 }
 
 bool cubesOverlap(Cube* cube1, Cube* cube2, glm::vec3* shortestAxis, Cube** fartherObject, float* overlapStart, float* overlapEnd) {
@@ -300,6 +320,7 @@ bool getIntersectionPoint(Cube* cube1, Cube* cube2, glm::vec3 (&collisionPoints)
         for (glm::vec3 &point : collisionPoints) {
             point = glm::vec3(0.0f);
         }
+        *actualPoint = glm::vec3(0.0f);
 
         int firstCubePointCount = 0, secondCubePointCount = 0;
         for (int i = 0; i < 8; i++) {
@@ -314,65 +335,16 @@ bool getIntersectionPoint(Cube* cube1, Cube* cube2, glm::vec3 (&collisionPoints)
         }
 
         if (firstCubePointCount == 1) {//first cube point, second cube face
-            *actualPoint = collisionPoints[0];
+            *actualPoint == collisionPoints[0];
         }
         else if (secondCubePointCount == 1) {//second cube point, first cube face
-            *actualPoint = collisionPoints[4];
+            *actualPoint == collisionPoints[4];
+        }
+        else if (firstCubePointCount == 2 && secondCubePointCount == 2) {//edge edge collision
+
         }
         else if (firstCubePointCount == 4 && secondCubePointCount == 4) {
-            glm::vec3 tempAxis = collisionPoints[5]-collisionPoints[2];
-            glm::vec3 xAxis = glm::normalize(glm::cross(tempAxis, overlapAxis));
-            glm::vec3 yAxis = glm::normalize(glm::cross(overlapAxis, xAxis));
-
-
-            //Gets points of both polygons (squares)
-            std::vector<glm::vec2> subject, clip;
-            for (int i = 0; i < 4; i++) {
-                subject.emplace_back(glm::dot(collisionPoints[i], xAxis), glm::dot(collisionPoints[i], yAxis));
-            }
-            for (int i = 4; i < 8; i++) {
-                clip.emplace_back(glm::dot(collisionPoints[i], xAxis), glm::dot(collisionPoints[i], yAxis));
-            }
-
-            //gets center points of both squares
-            glm::vec2 centroidSubject = std::accumulate(subject.begin(), subject.end(), glm::vec2(0.0f, 0.0f))/static_cast<float>(subject.size());
-            glm::vec2 centroidClip = std::accumulate(clip.begin(), clip.end(), glm::vec2(0.0f, 0.0f))/static_cast<float>(clip.size());
-
-            //sorts points of squares in counterclockwise order to make them good for the overlap function
-            std::vector<glm::vec2> subjectCCW, clipCCW;
-            std::vector<float> subjectAtan, clipAtan;
-            std::vector<glm::vec2>::iterator polygonIter;
-            std::vector<float>::iterator atanIter;
-
-            //sorts subject
-            for (std::vector<glm::vec2>::iterator it = subject.begin(); it != subject.end(); ++it) {
-                float currentAtan = std::atan2(it->y-centroidSubject.y, it->x-centroidSubject.x);
-                atanIter = subjectAtan.begin();
-                for (polygonIter = subjectCCW.begin(); polygonIter != subjectCCW.end(); ++polygonIter) {
-                    if (*atanIter > currentAtan) {
-                        break;
-                    }
-                    ++atanIter;
-                }
-                subjectCCW.insert(polygonIter, *it);
-                subjectAtan.insert(atanIter, currentAtan);
-            }
-
-            //sorts clip
-            for (std::vector<glm::vec2>::iterator it = clip.begin(); it != clip.end(); ++it) {
-                float currentAtan = std::atan2(it->y-centroidClip.y, it->x-centroidClip.x);
-                atanIter = clipAtan.begin();
-                for (polygonIter = clipCCW.begin(); polygonIter != clipCCW.end(); ++polygonIter) {
-                    if (*atanIter > currentAtan) {
-                        break;
-                    }
-                    ++atanIter;
-                }
-                clipCCW.insert(polygonIter, *it);
-                clipAtan.insert(atanIter, currentAtan);
-            }
-
-            std::vector<glm::vec2> overlap = getOverlapPolygon(subjectCCW, clipCCW);
+            *actualPoint = (cube1->center+cube2->center)/2.0f;
         }
         return true;
     }
@@ -542,6 +514,16 @@ int main() {
                 continue;
             glm::mat4 model = glm::mat4(1.0f);
             model = glm::translate(model, collisionPoint);
+            model = glm::scale(model, glm::vec3(0.1f));
+            singleShader.setMat4("model", model);
+            glDepthFunc(GL_ALWAYS);
+            glDrawArrays(GL_TRIANGLES, 0, 36);
+            glDepthFunc(GL_LESS);
+        }
+        if (realPoint != glm::vec3(0.0f, 0.0f, 0.0f)) {
+            singleShader.setVec3("color", glm::vec3(0.0f, 1.0f, 1.0f));
+            glm::mat4 model = glm::mat4(1.0f);
+            model = glm::translate(model, realPoint);
             model = glm::scale(model, glm::vec3(0.1f));
             singleShader.setMat4("model", model);
             glDepthFunc(GL_ALWAYS);

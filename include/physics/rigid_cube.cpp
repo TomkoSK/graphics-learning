@@ -39,14 +39,15 @@ void Cube::rotate(glm::quat rotation) {
 }
 
 void Cube::updatePoints(){ //Returns 8 points of a cube
-    points[0] = position+rotationMatrix*glm::vec3(-0.5, 0.5, 0.5);
-    points[1] = position+rotationMatrix*glm::vec3(-0.5, 0.5, -0.5);
-    points[2] = position+rotationMatrix*glm::vec3(-0.5, -0.5, 0.5);
-    points[3] = position+rotationMatrix*glm::vec3(-0.5, -0.5, -0.5);
-    points[4] = position+rotationMatrix*glm::vec3(0.5, 0.5, 0.5);
-    points[5] = position+rotationMatrix*glm::vec3(0.5, 0.5, -0.5);
-    points[6] = position+rotationMatrix*glm::vec3(0.5, -0.5, 0.5);
-    points[7] = position+rotationMatrix*glm::vec3(0.5, -0.5, -0.5);
+    this->points[0] = position+rotationMatrix*glm::vec3(-0.5, 0.5, 0.5);
+    this->points[1] = position+rotationMatrix*glm::vec3(-0.5, 0.5, -0.5);
+    this->points[2] = position+rotationMatrix*glm::vec3(-0.5, -0.5, 0.5);
+    this->points[3] = position+rotationMatrix*glm::vec3(-0.5, -0.5, -0.5);
+    this->points[4] = position+rotationMatrix*glm::vec3(0.5, 0.5, 0.5);
+    this->points[5] = position+rotationMatrix*glm::vec3(0.5, 0.5, -0.5);
+    this->points[6] = position+rotationMatrix*glm::vec3(0.5, -0.5, 0.5);
+    this->points[7] = position+rotationMatrix*glm::vec3(0.5, -0.5, -0.5);
+    this->center = position;
 }
 
 void Cube::update(float deltaTime) {

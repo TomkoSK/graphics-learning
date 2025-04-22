@@ -13,6 +13,7 @@ public:
     glm::quat rotation;
     glm::mat4 model;
     glm::vec3 points[8];
+    glm::vec3 center;
     glm::mat3 rotationMatrix;
     glm::vec3 velocity;
     void addImpulse(glm::vec3 direction);
