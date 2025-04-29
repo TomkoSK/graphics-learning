@@ -82,6 +82,9 @@ void processInput(GLFWwindow *window, float deltaTime)
         if(glfwGetKey(window, GLFW_KEY_G) == GLFW_PRESS){
             firstCube.rotate(glm::quat(glm::angleAxis(glm::radians(45.0f)*deltaTime, glm::vec3(0.0f, 0.0f, 1.0f))));
         }
+        if (glfwGetKey(window, GLFW_KEY_H) == GLFW_PRESS) {
+            firstCube.rotate(glm::quat(glm::angleAxis(glm::radians(45.0f)*deltaTime, glm::vec3(0.0f, 1.0f, 0.0f))));
+        }
     }
     else if (movementIndex == 2) {
         if(glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
@@ -107,6 +110,9 @@ void processInput(GLFWwindow *window, float deltaTime)
         }
         if(glfwGetKey(window, GLFW_KEY_G) == GLFW_PRESS){
             secondCube.rotate(glm::quat(glm::angleAxis(glm::radians(45.0f)*deltaTime, glm::vec3(0.0f, 0.0f, 1.0f))));
+        }
+        if (glfwGetKey(window, GLFW_KEY_H) == GLFW_PRESS) {
+            secondCube.rotate(glm::quat(glm::angleAxis(glm::radians(45.0f)*deltaTime, glm::vec3(0.0f, 1.0f, 0.0f))));
         }
     }
 }
@@ -341,9 +347,24 @@ bool getIntersectionPoint(Cube* cube1, Cube* cube2, glm::vec3 (&collisionPoints)
             *actualPoint == collisionPoints[4];
         }
         else if (firstCubePointCount == 2 && secondCubePointCount == 2) {//edge edge collision
-
+            std::cout << "amogus" << std::endl;
+            glm::vec3 temp;
+            if (overlapAxis != glm::vec3(1.0f, 0.0f, 0.0f))
+                temp = glm::cross(overlapAxis, glm::vec3(1.0f, 0.0f, 0.0f));
+            else
+                temp = glm::cross(overlapAxis, glm::vec3(0.0f, 1.0f, 0.0f));
+            glm::vec3 xAxis = glm::normalize(glm::cross(overlapAxis, temp));
+            glm::vec3 yAxis = glm::normalize(glm::cross(overlapAxis, xAxis));
+            glm::vec2 projectedPoints[4];
+            projectedPoints[0] = glm::vec2(glm::dot(xAxis, collisionPoints[0]), glm::dot(yAxis, collisionPoints[0]));
+            projectedPoints[1] = glm::vec2(glm::dot(xAxis, collisionPoints[1]), glm::dot(yAxis, collisionPoints[1]));
+            projectedPoints[2] = glm::vec2(glm::dot(xAxis, collisionPoints[4]), glm::dot(yAxis, collisionPoints[4]));
+            projectedPoints[3] = glm::vec2(glm::dot(xAxis, collisionPoints[5]), glm::dot(yAxis, collisionPoints[5]));
+            glm::vec2 intersection = lineIntersection(projectedPoints[0], projectedPoints[1], projectedPoints[2], projectedPoints[3]);
+            float ratio = glm::dot((intersection-projectedPoints[0]), (projectedPoints[1]-projectedPoints[0]));
+            *actualPoint = collisionPoints[0]+(collisionPoints[1]-collisionPoints[0])*ratio;
         }
-        else if (firstCubePointCount == 4 && secondCubePointCount == 4) {
+        else if (firstCubePointCount > 2 && secondCubePointCount > 2) {
             *actualPoint = (cube1->center+cube2->center)/2.0f;
         }
         return true;
